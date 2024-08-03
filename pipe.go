@@ -7,44 +7,74 @@ type result[T any] struct {
 }
 
 type evaluator[T any] interface {
-	eval() *result[T]
+	eval() (*result[T], func())
+	registerFn(f func(T))
+}
+
+func evalResult[T any](v T, fn func(), fns []func(T)) (*result[T], func()) {
+	cleanup := func() {
+		for i := len(fns) - 1; i >= 0; i-- {
+			fns[i](v)
+		}
+		fn()
+	}
+	return &result[T]{v, nil}, cleanup
 }
 
 type scalar[T any] struct {
-	v T
+	v        T
+	cleanups []func(T)
 }
 
-func (s *scalar[T]) eval() *result[T] {
-	return &result[T]{s.v, nil}
+func (s *scalar[T]) eval() (*result[T], func()) {
+	return evalResult(s.v, func() {}, s.cleanups)
+}
+
+func (s *scalar[T]) registerFn(f func(T)) {
+	s.cleanups = append(s.cleanups, f)
 }
 
 type selection[In, Out any] struct {
-	parent evaluator[In]
-	fn     func(v In) Out
+	parent   evaluator[In]
+	fn       func(v In) Out
+	cleanups []func(Out)
 }
 
-func (s *selection[In, Out]) eval() *result[Out] {
-	r := s.parent.eval()
+func (s *selection[In, Out]) eval() (*result[Out], func()) {
+	r, cleanup := s.parent.eval()
 	if r.err != nil {
 		var zero Out
-		return &result[Out]{zero, r.err}
+		return &result[Out]{zero, r.err}, cleanup
 	}
-	return &result[Out]{s.fn(r.v), nil}
+	return evalResult(s.fn(r.v), cleanup, s.cleanups)
+}
+
+func (s *selection[In, Out]) registerFn(f func(Out)) {
+	s.cleanups = append(s.cleanups, f)
 }
 
 type selection2[In, Out any] struct {
-	parent evaluator[In]
-	fn     func(in In) (Out, error)
+	parent   evaluator[In]
+	fn       func(in In) (Out, error)
+	cleanups []func(Out)
 }
 
-func (s *selection2[In, Out]) eval() *result[Out] {
-	r1 := s.parent.eval()
+func (s *selection2[In, Out]) eval() (*result[Out], func()) {
+	r1, cleanup := s.parent.eval()
 	if r1.err != nil {
 		var zero Out
-		return &result[Out]{zero, r1.err}
+		return &result[Out]{zero, r1.err}, cleanup
 	}
 	r2, err := s.fn(r1.v)
-	return &result[Out]{r2, err}
+	if err != nil {
+		var zero Out
+		return &result[Out]{zero, err}, cleanup
+	}
+	return evalResult(r2, cleanup, s.cleanups)
+}
+
+func (s *selection2[In, Out]) registerFn(f func(Out)) {
+	s.cleanups = append(s.cleanups, f)
 }
 
 // Pipe represents the term of the pipeline.
@@ -54,7 +84,7 @@ type Pipe[T any] struct {
 
 // Value returns a term.
 func Value[T any](v T) *Pipe[T] {
-	return &Pipe[T]{&scalar[T]{v}}
+	return &Pipe[T]{&scalar[T]{v, nil}}
 }
 
 type Builder[T any] func(f func(T) T) Builder[T]
@@ -63,7 +93,7 @@ func (p *Pipe[T]) Pipe(f func(v T) T) Builder[T] {
 	var add Builder[T]
 	add = func(g func(T) T) Builder[T] {
 		next := p.next
-		p.next = &selection[T, T]{next, g}
+		p.next = &selection[T, T]{next, g, nil}
 		return add
 	}
 	add(f)
@@ -72,25 +102,27 @@ func (p *Pipe[T]) Pipe(f func(v T) T) Builder[T] {
 
 func (p *Pipe[T]) Chain(f func(v T) T) *Pipe[T] {
 	return &Pipe[T]{
-		next: &selection[T, T]{p.next, f},
+		next: &selection[T, T]{p.next, f, nil},
 	}
 }
 
 func (p *Pipe[T]) TryChain(f func(v T) (T, error)) *Pipe[T] {
 	return &Pipe[T]{
-		next: &selection2[T, T]{p.next, f},
+		next: &selection2[T, T]{p.next, f, nil},
 	}
 }
 
 // Defer registers f to cleanup T.
 func (p *Pipe[T]) Defer(f func(v T)) *Pipe[T] {
+	p.next.registerFn(f)
 	return p
 }
 
 // Eval returns the result of the pipeline.
 // If the pipeline gets an error, it stops the rest of the evaluations and returns that error along with the zero value of T.
 func (p *Pipe[T]) Eval() (T, error) {
-	r := p.next.eval()
+	r, cleanup := p.next.eval()
+	defer cleanup()
 	if r.err != nil {
 		var zero T
 		return zero, r.err
@@ -101,14 +133,14 @@ func (p *Pipe[T]) Eval() (T, error) {
 // From is like [Pipe.Chain] except f returns different type.
 func From[In, Out any](p *Pipe[In], f func(In) Out) *Pipe[Out] {
 	return &Pipe[Out]{
-		next: &selection[In, Out]{p.next, f},
+		next: &selection[In, Out]{p.next, f, nil},
 	}
 }
 
 // TryFrom is like [Pipe.TryChain] except f returns different type.
 func TryFrom[In, Out any](p *Pipe[In], f func(In) (Out, error)) *Pipe[Out] {
 	return &Pipe[Out]{
-		next: &selection2[In, Out]{p.next, f},
+		next: &selection2[In, Out]{p.next, f, nil},
 	}
 }
 
