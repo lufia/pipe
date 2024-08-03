@@ -15,9 +15,8 @@ func TestLast2(t *testing.T) {
 	}
 }
 
-func TestLast3(t *testing.T) {
-	f := Last3R1(strings.ReplaceAll)
-	replace := Last2R1(f)
+func TestAll3(t *testing.T) {
+	replace := All3R1(strings.ReplaceAll)
 	s := replace("oink oink oink")("oink")("moo")
 	if s != "moo moo moo" {
 		t.Errorf("replace() = %s", s)
