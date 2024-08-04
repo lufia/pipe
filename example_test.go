@@ -2,6 +2,7 @@ package pipe_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/lufia/pipe"
@@ -20,11 +21,13 @@ func require[T ~string](v T) (T, error) {
 }
 
 func ExampleValue() {
-	p := pipe.Value("hello world").
+	p1 := pipe.Value("hello world").
 		TryChain(require).
 		Chain(tee).
 		Chain(strings.ToUpper)
-	a, _ := pipe.From(p, strings.Fields).Eval()
+	p2 := pipe.From(p1, strings.Fields)
+	p3 := pipe.From(p2, slices.Values)
+	a, _ := p3.Eval()
 	fmt.Println(a)
 	// Output:
 	// hello world
