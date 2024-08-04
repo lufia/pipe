@@ -38,11 +38,27 @@ func TestPipeTryChain(t *testing.T) {
 	wantEval(t, 20, Value(10).TryChain(add10))
 }
 
+func TestPipeDefer(t *testing.T) {
+	var called bool
+	Value(10).Defer(func(int) {
+		called = true
+	}).Eval()
+	if !called {
+		t.Errorf("Defer must be called")
+	}
+}
+
+func TestPipeDeferErr(t *testing.T) {
+	TryFrom(Value("aa"), strconv.Atoi).Defer(func(int) {
+		t.Errorf("Defer must not be called")
+	}).Eval()
+}
+
 func TestFrom(t *testing.T) {
 	wantEval(t, "10", From(Value(10), strconv.Itoa))
 }
 
-func TestPipeTryFrom(t *testing.T) {
+func TestTryFrom(t *testing.T) {
 	wantEval(t, 10, TryFrom(Value("10"), strconv.Atoi))
 }
 
