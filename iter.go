@@ -1,42 +1,37 @@
-//go:build ignore
-
 package pipe
 
 import (
 	"iter"
 )
 
-type sequence[T any] struct {
+type sequence[In, Out any] struct {
+	parent   evaluator[iter.Seq[In]]
+	fn       func(In) Out
+	cleanups []func(iter.Seq[Out])
 }
 
-type PipeSeq[SIn ~iter.Seq[EIn], EIn, EOut any] struct {
-	next evaluator[SIn]
-	fn   func(EIn) EOut
-}
-
-func Seq[SIn ~iter.Seq[EIn], EIn, EOut any](p *Pipe[S], f func(EIn) EOut) *PipeSeq[iter.Seq[EOut]] {
-	return &PipeSeq[SIn, iter.Seq[E]]{
-		next: p.next,
-		fn:   f,
+func (s *sequence[In, Out]) eval() (*result[iter.Seq[Out]], func()) {
+	r, cleanup := s.parent.eval()
+	if r.err != nil {
+		return &result[iter.Seq[Out]]{nil, r.err}, cleanup
 	}
-}
-
-func (p *PipeSeq[SIn, EIn, EOut]) Chain(f func(EIn) EOut) *PipeSeq[EOut] {
-	seq := func(yield func(EOut) bool) {
-	}
-	return &PipeSeq[SIn, EIn, EOut]{
-		next: seq,
-		fn:   f,
-	}
-}
-
-func (p *PipeSeq[SIn, EIn, EOut]) Eval() *PipeSeq[SIn, EIn, EOut] {
-	seq := func(yield func(EOut) bool) {
-		seq, cleanup := p.next.eval()
-		defer cleanup()
-		for v := range seq {
-			yield(p.fn(v))
+	var seq iter.Seq[Out]
+	seq = func(yield func(Out) bool) {
+		for v := range r.v {
+			if !yield(s.fn(v)) {
+				break
+			}
 		}
 	}
-	return &PipeSeq[iter.Seq[EOut]]{}
+	return evalResult(seq, cleanup, s.cleanups)
+}
+
+func (s *sequence[In, Out]) registerFn(f func(iter.Seq[Out])) {
+	s.cleanups = append(s.cleanups, f)
+}
+
+func Each[In, Out any](p *Pipe[iter.Seq[In]], f func(In) Out) *Pipe[iter.Seq[Out]] {
+	return &Pipe[iter.Seq[Out]]{
+		next: &sequence[In, Out]{p.next, f, nil},
+	}
 }

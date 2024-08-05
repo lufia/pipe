@@ -2,7 +2,7 @@ package pipe_test
 
 import (
 	"fmt"
-	"slices"
+	"iter"
 	"strings"
 
 	"github.com/lufia/pipe"
@@ -20,16 +20,31 @@ func require[T ~string](v T) (T, error) {
 	return v, nil
 }
 
+// After Go 1.23 is released, slices.Values will replace this.
+func values[T any](a []T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, s := range a {
+			if !yield(s) {
+				break
+			}
+		}
+	}
+}
+
 func ExampleValue() {
 	p1 := pipe.Value("hello world").
 		TryChain(require).
 		Chain(tee).
 		Chain(strings.ToUpper)
 	p2 := pipe.From(p1, strings.Fields)
-	p3 := pipe.From(p2, slices.Values)
-	a, _ := p3.Eval()
+	p3 := pipe.From(p2, values)
+	p4 := pipe.Each(p3, func(s string) string {
+		return s + "!"
+	})
+	a, _ := p4.Eval()
 	fmt.Println(a)
 	// Output:
 	// hello world
-	// [HELLO WORLD]
+	// HELLO
+	// WORLD
 }
