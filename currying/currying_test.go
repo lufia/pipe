@@ -15,10 +15,14 @@ func TestLast2(t *testing.T) {
 	}
 }
 
-func TestAll3(t *testing.T) {
-	replace := All3R1(strings.ReplaceAll)
-	s := replace("oink oink oink")("oink")("moo")
-	if s != "moo moo moo" {
-		t.Errorf("replace() = %s", s)
+func TestFirst2(t *testing.T) {
+	s := "seafood"
+	containsFoo := First2R1(strings.Contains)("foo")
+	if b := containsFoo(s); b != true {
+		t.Errorf("containsFoo(%q) = %t", s, b)
+	}
+	containsBar := First2R1(strings.Contains)("bar")
+	if b := containsBar(s); b != false {
+		t.Errorf("containsBar(%q) = %t", s, b)
 	}
 }
