@@ -31,6 +31,15 @@ func values[T any](a []T) iter.Seq[T] {
 	}
 }
 
+// After Go 1.23 is released, slices.Collect will replace this.
+func collect[T any](seq iter.Seq[T]) []T {
+	var a []T
+	for v := range seq {
+		a = append(a, v)
+	}
+	return a
+}
+
 func ExampleValue() {
 	p1 := pipe.Value("hello world").
 		TryChain(require).
@@ -41,10 +50,10 @@ func ExampleValue() {
 	p4 := pipe.Each(p3, func(s string) string {
 		return s + "!"
 	})
-	a, _ := p4.Eval()
+	p5 := pipe.From(p4, collect)
+	a, _ := p5.Eval()
 	fmt.Println(a)
 	// Output:
 	// hello world
-	// HELLO
-	// WORLD
+	// [HELLO! WORLD!]
 }
