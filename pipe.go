@@ -36,30 +36,11 @@ func (s *scalar[T]) registerFn(f func(T)) {
 
 type selection[In, Out any] struct {
 	parent   evaluator[In]
-	fn       func(v In) Out
-	cleanups []func(Out)
-}
-
-func (s *selection[In, Out]) eval() (*result[Out], func()) {
-	r, cleanup := s.parent.eval()
-	if r.err != nil {
-		var zero Out
-		return &result[Out]{zero, r.err}, cleanup
-	}
-	return evalResult(s.fn(r.v), cleanup, s.cleanups)
-}
-
-func (s *selection[In, Out]) registerFn(f func(Out)) {
-	s.cleanups = append(s.cleanups, f)
-}
-
-type selection2[In, Out any] struct {
-	parent   evaluator[In]
 	fn       func(in In) (Out, error)
 	cleanups []func(Out)
 }
 
-func (s *selection2[In, Out]) eval() (*result[Out], func()) {
+func (s *selection[In, Out]) eval() (*result[Out], func()) {
 	r1, cleanup := s.parent.eval()
 	if r1.err != nil {
 		var zero Out
@@ -73,8 +54,14 @@ func (s *selection2[In, Out]) eval() (*result[Out], func()) {
 	return evalResult(r2, cleanup, s.cleanups)
 }
 
-func (s *selection2[In, Out]) registerFn(f func(Out)) {
+func (s *selection[In, Out]) registerFn(f func(Out)) {
 	s.cleanups = append(s.cleanups, f)
+}
+
+func withError[In, Out any](f func(In) Out) func(In) (Out, error) {
+	return func(v In) (Out, error) {
+		return f(v), nil
+	}
 }
 
 // Pipe represents the term of the pipeline.
@@ -93,7 +80,7 @@ func (p *Pipe[T]) Pipe(f func(v T) T) Builder[T] {
 	var add Builder[T]
 	add = func(g func(T) T) Builder[T] {
 		next := p.next
-		p.next = &selection[T, T]{next, g, nil}
+		p.next = &selection[T, T]{next, withError(g), nil}
 		return add
 	}
 	add(f)
@@ -102,13 +89,13 @@ func (p *Pipe[T]) Pipe(f func(v T) T) Builder[T] {
 
 func (p *Pipe[T]) Chain(f func(v T) T) *Pipe[T] {
 	return &Pipe[T]{
-		next: &selection[T, T]{p.next, f, nil},
+		next: &selection[T, T]{p.next, withError(f), nil},
 	}
 }
 
 func (p *Pipe[T]) TryChain(f func(v T) (T, error)) *Pipe[T] {
 	return &Pipe[T]{
-		next: &selection2[T, T]{p.next, f, nil},
+		next: &selection[T, T]{p.next, f, nil},
 	}
 }
 
@@ -133,14 +120,14 @@ func (p *Pipe[T]) Eval() (T, error) {
 // From is like [Pipe.Chain] except f returns different type.
 func From[In, Out any](p *Pipe[In], f func(In) Out) *Pipe[Out] {
 	return &Pipe[Out]{
-		next: &selection[In, Out]{p.next, f, nil},
+		next: &selection[In, Out]{p.next, withError(f), nil},
 	}
 }
 
 // TryFrom is like [Pipe.TryChain] except f returns different type.
 func TryFrom[In, Out any](p *Pipe[In], f func(In) (Out, error)) *Pipe[Out] {
 	return &Pipe[Out]{
-		next: &selection2[In, Out]{p.next, f, nil},
+		next: &selection[In, Out]{p.next, f, nil},
 	}
 }
 

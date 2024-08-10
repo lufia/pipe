@@ -30,6 +30,32 @@ func (s *sequence[In, Out]) registerFn(f func(iter.Seq[Out])) {
 	s.cleanups = append(s.cleanups, f)
 }
 
+type sequenceErr[In, Out any] struct {
+	parent   evaluator[iter.Seq[In]]
+	fn       func(In) (Out, error)
+	cleanups []func(iter.Seq2[Out, error])
+}
+
+func (s *sequenceErr[In, Out]) eval() (*result[iter.Seq2[Out, error]], func()) {
+	r, cleanup := s.parent.eval()
+	if r.err != nil {
+		return &result[iter.Seq2[Out, error]]{nil, r.err}, cleanup
+	}
+	var seq iter.Seq2[Out, error]
+	seq = func(yield func(Out, error) bool) {
+		for in := range r.v {
+			if !yield(s.fn(in)) {
+				break
+			}
+		}
+	}
+	return evalResult(seq, cleanup, s.cleanups)
+}
+
+func (s *sequenceErr[In, Out]) registerFn(f func(iter.Seq2[Out, error])) {
+	s.cleanups = append(s.cleanups, f)
+}
+
 type sequence2[KIn, VIn, KOut, VOut any] struct {
 	parent   evaluator[iter.Seq2[KIn, VIn]]
 	fn       func(KIn, VIn) (KOut, VOut)
@@ -64,7 +90,7 @@ func Each[In, Out any](p *Pipe[iter.Seq[In]], f func(In) Out) *Pipe[iter.Seq[Out
 
 func TryEach[In, Out any](p *Pipe[iter.Seq[In]], f func(In) (Out, error)) *Pipe[iter.Seq2[Out, error]] {
 	return &Pipe[iter.Seq2[Out, error]]{
-		next: &sequence2[In, In, Out, error]{}, // TODO: implement
+		next: &sequenceErr[In, Out]{p.next, f, nil},
 	}
 }
 
