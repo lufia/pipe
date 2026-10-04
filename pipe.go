@@ -74,28 +74,15 @@ func Value[T any](v T) *Pipe[T] {
 	return &Pipe[T]{&scalar[T]{v, nil}}
 }
 
-type Builder[T any] func(f func(T) T) Builder[T]
-
-func (p *Pipe[T]) Pipe(f func(v T) T) Builder[T] {
-	var add Builder[T]
-	add = func(g func(T) T) Builder[T] {
-		next := p.next
-		p.next = &selection[T, T]{next, withError(g), nil}
-		return add
-	}
-	add(f)
-	return add
-}
-
-func (p *Pipe[T]) Chain(f func(v T) T) *Pipe[T] {
-	return &Pipe[T]{
-		next: &selection[T, T]{p.next, withError(f), nil},
+func (p *Pipe[T]) To[T2 any](f func(T) T2) *Pipe[T2] {
+	return &Pipe[T2]{
+		next: &selection[T, T2]{p.next, withError(f), nil},
 	}
 }
 
-func (p *Pipe[T]) TryChain(f func(v T) (T, error)) *Pipe[T] {
-	return &Pipe[T]{
-		next: &selection[T, T]{p.next, f, nil},
+func (p *Pipe[T]) Try[T2 any](f func(T) (T2, error)) *Pipe[T2] {
+	return &Pipe[T2]{
+		next: &selection[T, T2]{p.next, f, nil},
 	}
 }
 
@@ -116,23 +103,3 @@ func (p *Pipe[T]) Eval() (T, error) {
 	}
 	return r.v, nil
 }
-
-// From is like [Pipe.Chain] except f returns different type.
-func From[In, Out any](p *Pipe[In], f func(In) Out) *Pipe[Out] {
-	return &Pipe[Out]{
-		next: &selection[In, Out]{p.next, withError(f), nil},
-	}
-}
-
-// TryFrom is like [Pipe.TryChain] except f returns different type.
-func TryFrom[In, Out any](p *Pipe[In], f func(In) (Out, error)) *Pipe[Out] {
-	return &Pipe[Out]{
-		next: &selection[In, Out]{p.next, f, nil},
-	}
-}
-
-/*
-If Go supports the type parameter on method, we will add pipe.To method.
-
-  pipe.Value(auth()).To(tokenFrom).To(fetch)
-*/

@@ -24,9 +24,10 @@ func WithParam(k, v string) func(u *url.URL) *url.URL {
 }
 
 func ExampleValue_url() {
-	u, _ := pipe.TryFrom(pipe.Value("https://example.com"), url.Parse).
-		Chain(WithPath("/query")).
-		Chain(WithParam("key", "value")).
+	u, _ := pipe.Value("https://example.com").
+		Try(url.Parse).
+		To(WithPath("/query")).
+		To(WithParam("key", "value")).
 		Eval()
 	fmt.Println(u.String())
 	// Output: https://example.com/query?key=value

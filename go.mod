@@ -1,6 +1,6 @@
 module github.com/lufia/pipe
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/m-mizutani/gt v0.2.1
